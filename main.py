@@ -9,25 +9,29 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     if "file" not in request.files:
+        print("❌ No file found in request")
         return jsonify({"error": "Missing file in request"}), 400
 
     audio_file = request.files["file"]
+    print(f"✅ Received file: {audio_file.filename}")
 
     try:
         audio_bytes = audio_file.read()
+        print(f"ℹ️ File size: {len(audio_bytes)} bytes")
         audio_file_obj = io.BytesIO(audio_bytes)
         audio_file_obj.name = audio_file.filename
 
-        # Run transcription
         transcript = openai.Audio.transcribe("whisper-1", file=audio_file_obj)
+        print(f"✅ Transcription result: {transcript}")
 
-        # If transcript is blank, return controlled error
         if not transcript or "text" not in transcript:
+            print("❌ Transcript missing 'text' key")
             return jsonify({"error": "No transcription returned"}), 502
 
         return jsonify({"transcript": transcript["text"]})
 
     except Exception as e:
+        print(f"🔥 Exception occurred: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
