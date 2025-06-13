@@ -1,5 +1,6 @@
 import os
 import io
+import json
 from flask import Flask, request, jsonify
 import openai
 
@@ -26,29 +27,42 @@ def transcribe():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    data = request.get_json()
-    if not data or "transcript" not in data:
-        return jsonify({"error": "Missing transcript data"}), 400
-
     try:
-        prompt = (
-            "Extract key metadata from the following transcript. "
-            "Return JSON with 4 fields: 'people', 'places', 'time', 'topics'. "
-            "Each field should be a list of keywords.\n\n"
-            f"Transcript:\n{data['transcript']}"
-        )
+        data = request.get_json()
+        transcript = data.get("transcript")
+
+        if not transcript:
+            return jsonify({"error": "Missing transcript text"}), 400
+
+        prompt = [
+            {
+                "role": "system",
+                "content": (
+                    "Extract the following metadata from this transcript: "
+                    "people mentioned, places referenced, time indicators (e.g., dates, seasons, ages, time of day), and key themes. "
+                    "Return a compact JSON with keys: people, places, times, themes."
+                )
+            },
+            {
+                "role": "user",
+                "content": transcript
+            }
+        ]
 
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a metadata extraction assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2
+            model="gpt-4",  # downgrade to gpt-3.5-turbo if needed
+            messages=prompt,
+            temperature=0.3
         )
 
-        reply = response["choices"][0]["message"]["content"]
-        return jsonify({"metadata": reply})
+        message = response["choices"][0]["message"]["content"].strip()
+
+        # Ensure valid JSON is returned even if GPT wraps it in code block
+        json_start = message.find("{")
+        json_end = message.rfind("}") + 1
+        json_string = message[json_start:json_end]
+
+        return jsonify(json.loads(json_string))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
