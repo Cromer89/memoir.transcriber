@@ -6,6 +6,12 @@ import openai
 app = Flask(__name__)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+@app.before_request
+def log_request_info():
+    print(f"📥 Incoming request: {request.method} {request.path}")
+    print(f"Headers: {dict(request.headers)}")
+    print(f"Content-Type: {request.content_type}")
+
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     if "file" not in request.files:
