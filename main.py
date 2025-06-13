@@ -6,40 +6,51 @@ import openai
 app = Flask(__name__)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-@app.before_request
-def log_request_info():
-    print(f"📥 Incoming request: {request.method} {request.path}")
-    print(f"Headers: {dict(request.headers)}")
-    print(f"Content-Type: {request.content_type}")
-
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
+    if "file" not in request.files:
+        return jsonify({"error": "Missing file in request"}), 400
+
+    audio_file = request.files["file"]
+
     try:
-        if "file" not in request.files:
-            print("❌ No file found in request.files")
-            return jsonify({"error": "Missing file in request"}), 400
-
-        audio_file = request.files["file"]
-        print(f"✅ Received file: {audio_file.filename}")
-
         audio_bytes = audio_file.read()
-        print(f"ℹ️ File size: {len(audio_bytes)} bytes")
-
         audio_file_obj = io.BytesIO(audio_bytes)
         audio_file_obj.name = audio_file.filename
 
-        print("⏳ Sending to OpenAI Whisper API...")
-        transcript = openai.Audio.transcribe("whisper-1", file=audio_file_obj)
-
-        if not transcript:
-            print("❌ No transcript returned from Whisper")
-            return jsonify({"error": "No transcription returned"}), 502
-
-        print(f"✅ Transcript: {transcript}")
+        transcript = openai.Audio.transcribe("whisper-1", audio_file_obj)
         return jsonify({"transcript": transcript["text"]})
 
     except Exception as e:
-        print(f"🔥 Exception in /transcribe: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    data = request.get_json()
+    if not data or "transcript" not in data:
+        return jsonify({"error": "Missing transcript data"}), 400
+
+    try:
+        prompt = (
+            "Extract key metadata from the following transcript. "
+            "Return JSON with 4 fields: 'people', 'places', 'time', 'topics'. "
+            "Each field should be a list of keywords.\n\n"
+            f"Transcript:\n{data['transcript']}"
+        )
+
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a metadata extraction assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+
+        reply = response["choices"][0]["message"]["content"]
+        return jsonify({"metadata": reply})
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
